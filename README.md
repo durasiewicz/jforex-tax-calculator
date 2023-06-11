@@ -1,4 +1,4 @@
-# jforex-tax-calculator-fs
+# jforex-tax-calculator
 Headless tax calculator for JForex 4 in F#.
 
 ## Usage:
