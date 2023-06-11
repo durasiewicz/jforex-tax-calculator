@@ -1,4 +1,7 @@
 ﻿open System
+open System.Diagnostics
+open System.Globalization
+open System.IO
 open System.Net.Http
 open System.Threading.Tasks
 open Newtonsoft.Json
@@ -9,16 +12,24 @@ let nbpApiDayRangeLimit = 367
 [<Literal>]
 let beforeStartDayShift = 7
 
+let decimalCulture = CultureInfo.InvariantCulture
+
 type NbpExchangeRate =
     { No: string
       EffectiveDate: DateTime
       Mid: decimal }
-    
+
 type NbpExchangeRateDto =
-     { Table: string
-       Currency: string
-       Code: string
-       Rates: List<NbpExchangeRate> }
+    { Table: string
+      Currency: string
+      Code: string
+      Rates: List<NbpExchangeRate> }
+
+type PositionCloseReportRow =
+    { CloseDate: DateTime
+      PositionId: int64
+      NetPl: decimal
+      Currency: string }
 
 let rec getDateRanges (startDate: DateTime) (endDate: DateTime) (dayShift: int) =
     seq {
@@ -53,14 +64,49 @@ let getNbpRates (currencySymbol: string) (dateRanges: List<DateTime * DateTime>)
         return getRateTasks |> List.map (fun x -> x.Result)
     }
 
-let ranges =
-    getDateRanges (new DateTime(2022, 1, 1)) (new DateTime(2023, 5, 1)) 1
-    |> Seq.toList
-    |> getNbpRates "EUR"
-    |> Async.RunSynchronously
-    |> List.map JsonConvert.DeserializeObject<NbpExchangeRateDto>
-    |> List.collect (fun q -> q.Rates)
+let readClosedPositionReport (fileLines: List<string>) =
+    let rec readLine accumulator (fileLines: List<string>) =
+        match fileLines with
+        | h :: t ->
+            let cells = h.Split(',')
 
-let x = ranges
+            if cells[0] |> String.IsNullOrEmpty || cells[1] |> String.IsNullOrEmpty then
+                readLine accumulator t
+            else
+                readLine
+                    ({ CloseDate = DateTime.Parse(cells[1])
+                       Currency = cells[16]
+                       NetPl = Decimal.Parse(cells[14], decimalCulture)
+                       PositionId = Int64.Parse(cells[3]) }
+                     :: accumulator)
+                    t
+        | _ -> accumulator
+    
+    readLine [] fileLines
 
-printfn "Hello from F#"
+let args = Environment.GetCommandLineArgs()
+
+if args.Length <> 2 then
+    Console.WriteLine($"Usage: {Path.GetFileName(Process.GetCurrentProcess().MainModule.FileName)} positions-close.csv")
+else
+    let report =
+        File.ReadAllLines(args[1])
+        |> Array.skip 1
+        |> Array.toList
+        |> readClosedPositionReport
+
+    let startDate = (report |> List.map (fun q -> q.CloseDate) |> List.min).AddDays(-beforeStartDayShift)
+    let endDate = report |> List.map (fun q -> q.CloseDate) |> List.max
+    let currency = report |> List.map (fun q -> q.Currency) |> List.head
+    
+    let ranges =
+        getDateRanges startDate endDate 1
+        |> Seq.toList
+        |> getNbpRates currency
+        |> Async.RunSynchronously
+        |> List.map JsonConvert.DeserializeObject<NbpExchangeRateDto>
+        |> List.collect (fun q -> q.Rates)
+
+    let x = ranges
+
+    printfn "Hello from F#"
