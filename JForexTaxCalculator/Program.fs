@@ -4,6 +4,7 @@ open System.Globalization
 open System.IO
 open System.Net.Http
 open System.Threading.Tasks
+open ConsoleTables
 open Newtonsoft.Json
 
 [<Literal>]
@@ -87,6 +88,48 @@ let readClosedPositionReport (fileLines: List<string>) =
     
     readLine [] fileLines
 
+let generateReport (closedPositionsReport : List<PositionCloseReportRow>) (nbpRates : List<NbpExchangeRate>) (currency : string) =
+    let consoleTable = new ConsoleTable("Position Id",
+        "Position close date",
+        "NBP rate date",
+        "NBP rate no",
+        "NBP rate mid",
+        $"Net P/L in {currency}",
+        "Net P/L in PLN")
+    
+    let rec generateRow (closedPositionsReport : List<PositionCloseReportRow>) (nbpRates : List<NbpExchangeRate>) totalPl totalIncomePln totalCostsPln =
+        match closedPositionsReport with
+        | h :: t ->
+            let rate = nbpRates
+                    |> List.filter (fun q -> q.EffectiveDate < h.CloseDate)
+                    |> List.sortByDescending (fun q -> q.EffectiveDate)
+                    |> List.head
+            
+            let incomePln = if h.NetPl > 0m then h.NetPl * rate.Mid else 0m
+            let costsPln = if h.NetPl < 0m then h.NetPl * rate.Mid else 0m
+            
+            consoleTable.AddRow(h.PositionId,
+                h.CloseDate.ToString("yyyy-MM-dd"),
+                rate.EffectiveDate.ToString("yyyy-MM-dd"),
+                rate.No,
+                rate.Mid,
+                h.NetPl,
+                h.NetPl * rate.Mid) |> ignore
+            
+            generateRow t nbpRates (totalPl + h.NetPl) (totalIncomePln + incomePln) (totalCostsPln + costsPln)
+        | _ ->
+            consoleTable.Write();
+            Console.WriteLine();
+            Console.WriteLine($"Total P/L {currency}: {totalPl}");
+            Console.WriteLine($"Total income PLN: {totalIncomePln}");
+            Console.WriteLine($"Total costs PLN: {totalCostsPln}");
+            Console.WriteLine($"Net profit: {totalIncomePln - Math.Abs(totalCostsPln)}");
+            Console.WriteLine($"Net profit rounded: {Math.Round(totalIncomePln - Math.Abs(totalCostsPln), 2, MidpointRounding.ToPositiveInfinity)}");
+            ()
+            
+    generateRow closedPositionsReport nbpRates 0m 0m 0m
+    ()
+
 let args = Environment.GetCommandLineArgs()
 
 if args.Length <> 2 then
@@ -102,14 +145,13 @@ else
     let endDate = report |> List.map (fun q -> q.CloseDate) |> List.max
     let currency = report |> List.map (fun q -> q.Currency) |> List.head
     
-    let ranges =
+    let nbpRates =
         getDateRanges startDate endDate 1
         |> Seq.toList
         |> getNbpRates currency
         |> Async.RunSynchronously
         |> List.map JsonConvert.DeserializeObject<NbpExchangeRateDto>
         |> List.collect (fun q -> q.Rates)
-
-    let x = ranges
-
-    printfn "Hello from F#"
+    
+    generateReport report nbpRates currency
+    ()
