@@ -12,6 +12,9 @@ let nbpApiDayRangeLimit = 367
 [<Literal>]
 let beforeStartDayShift = 7
 
+[<Literal>]
+let closedPositionReportCellSeparator = ','
+
 let decimalCulture = CultureInfo.InvariantCulture
 
 type NbpExchangeRate =
@@ -68,7 +71,7 @@ let readClosedPositionReport (fileLines: List<string>) =
     let rec readLine accumulator (fileLines: List<string>) =
         match fileLines with
         | h :: t ->
-            let cells = h.Split(',')
+            let cells = h.Split(closedPositionReportCellSeparator)
 
             if cells[0] |> String.IsNullOrEmpty || cells[1] |> String.IsNullOrEmpty then
                 readLine accumulator t
