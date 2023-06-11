@@ -1,6 +1,7 @@
 ﻿open System
 open System.Net.Http
 open System.Threading.Tasks
+open Newtonsoft.Json
 
 [<Literal>]
 let nbpApiDayRangeLimit = 367
@@ -12,6 +13,12 @@ type NbpExchangeRate =
     { No: string
       EffectiveDate: DateTime
       Mid: decimal }
+    
+type NbpExchangeRateDto =
+     { Table: string
+       Currency: string
+       Code: string
+       Rates: List<NbpExchangeRate> }
 
 let rec getDateRanges (startDate: DateTime) (endDate: DateTime) (dayShift: int) =
     seq {
@@ -51,6 +58,8 @@ let ranges =
     |> Seq.toList
     |> getNbpRates "EUR"
     |> Async.RunSynchronously
+    |> List.map JsonConvert.DeserializeObject<NbpExchangeRateDto>
+    |> List.collect (fun q -> q.Rates)
 
 let x = ranges
 
