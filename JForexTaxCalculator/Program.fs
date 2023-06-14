@@ -1,4 +1,4 @@
-﻿open System
+open System
 open System.Diagnostics
 open System.Globalization
 open System.IO
@@ -123,7 +123,7 @@ let generateReport
         | h :: t ->
             let rate =
                 nbpRates
-                |> List.filter (fun q -> q.EffectiveDate < h.CloseDate)
+                |> List.filter (fun q -> q.EffectiveDate.Date < h.CloseDate.Date)
                 |> List.sortByDescending (fun q -> q.EffectiveDate)
                 |> List.head
 
